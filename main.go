@@ -23,8 +23,11 @@ func inputForm(w http.ResponseWriter, r *http.Request) {
 	// print input form
 	fmt.Fprintf(w, `<html>
 <head>
+	<title>Household Accounts Input Form</title>
 	<style>
-		input, select {font-size: 2em; width: 80vw;}
+		input, select {font-size: 2em; width: 80vw; margin: 0.2em; }
+		form {margin: 1em; }
+		body {text-align: center; }
 	</style>
 </head>
 <body>
@@ -48,24 +51,29 @@ func inputForm(w http.ResponseWriter, r *http.Request) {
 func sendAccount(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		fmt.Fprintf(w, "error: while parsing params.")
+		w.WriteHeader(http.StatusBadRequest)
 	} else {
-		if err := r.ParseForm(); err != nil {
-			fmt.Fprintf(w, "error: while parsing params.")
-			w.WriteHeader(http.StatusBadRequest)
-		} else {
-			params := map[string]interface{}{}
-			for k, v := range r.PostForm {
-				if k == "price" {
-					params[k], _ = strconv.Atoi(v[0])
-				} else {
-					params[k] = v[0]
-				}
+		params := map[string]interface{}{}
+		for k, v := range r.PostForm {
+			if k == "price" {
+				params[k], _ = strconv.Atoi(v[0])
+			} else {
+				params[k] = v[0]
 			}
-			// print input form
-			fmt.Fprintf(w, `<html>
+		}
+		// print input form
+		fmt.Fprintf(w, `<html>
 <head>
+	<title>Household Accounts Input Form</title>
 	<style>
-		input, select {font-size: 2em; width: 80vw;}
+		input, select {font-size: 2em; width: 80vw; margin: 0.2em; }
+		form {margin: 1em; }
+		body {text-align: center; }
 	</style>
 </head>
 <body>
@@ -73,39 +81,44 @@ func sendAccount(w http.ResponseWriter, r *http.Request) {
 		<input required id="date" name="date" type="date" value="%s">
 		<select required id="category" name="category">`, params["date"])
 
-			for _, c := range []string{"生活費", "娯楽", "嗜好品", "交際費", "その他"} {
-				s := ""
-				if c == params["category"] {
-					s = "selected"
-				}
-				fmt.Fprintf(w, "\t\t\t"+`<option %s value="%s">%s</option>`+"\n", s, c, c)
+		// remember submitted category
+		for _, c := range []string{"生活費", "娯楽", "嗜好品", "交際費", "その他"} {
+			s := ""
+			if c == params["category"] {
+				s = "selected"
 			}
+			fmt.Fprintf(w, "\t\t\t"+`<option %s value="%s">%s</option>`+"\n", s, c, c)
+		}
 
-			fmt.Fprintf(w, "\t\t"+`</select>
+		fmt.Fprintf(w, "\t\t"+`</select>
 		<input required id="price" name="price" type="number">
 		<input required id="item" name="item">
 		<input type="submit">
 	</form>`)
-			// print submitted result
-			fmt.Fprintf(w, `<ul>`)
-			for _, k := range []string{"date", "category", "price", "item"} {
-				fmt.Fprintf(w, "<li>%v: %v</li>\n", k, params[k])
-			}
-			fmt.Fprintf(w, `</ul></body></html>`)
+		// print submitted result
+		fmt.Fprintf(w, `<ul>`)
+		for _, k := range []string{"date", "category", "price", "item"} {
+			fmt.Fprintf(w, "<li>%v: %v</li>\n", k, params[k])
+		}
+		fmt.Fprintf(w, `</ul><p><a href="/">return</a></p></body></html>`)
 
-			// append account entry to Google Sheet
-			appendToSheets(params)
+		// append account entry to Google Sheet
+		if err := appendToSheets(params); err != nil {
+			log.Println(err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		// return 201 Created
+		w.WriteHeader(http.StatusCreated)
 
-			// post account entry to Discord Channel
-			err := postToDiscordChannel(params)
-			if err != nil {
-				log.Println(err)
-			}
+		// post account entry to Discord Channel
+		if err := postToDiscordChannel(params); err != nil {
+			log.Println(err)
 		}
 	}
 }
 
-func appendToSheets(params map[string]interface{}) {
+func appendToSheets(params map[string]interface{}) error {
 	// get time
 	t := time.Now()
 	ctx := context.Background()
@@ -128,6 +141,8 @@ func appendToSheets(params map[string]interface{}) {
 		log.Println(err)
 	}
 	log.Printf("%#v\n", resp)
+
+	return err
 }
 
 func postToDiscordChannel(account map[string]interface{}) error {
