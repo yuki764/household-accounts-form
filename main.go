@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"html/template"
 	"log"
 	"net/http"
 	"os"
@@ -21,31 +22,16 @@ func inputForm(w http.ResponseWriter, r *http.Request) {
 	// get time
 	t := time.Now()
 	// print input form
-	fmt.Fprintf(w, `<html>
-<head>
-	<title>Household Accounts Input Form</title>
-	<style>
-		input, select {font-size: 2em; width: 80vw; margin: 0.2em; }
-		form {margin: 1em; }
-		body {text-align: center; }
-	</style>
-</head>
-<body>
-	<form method="post" action="account">
-		<input required id="date" name="date" type="date" value="%d-%02d-%02d">
-		<select required id="category" name="category">
-			<option value="生活費">生活費</option>
-			<option value="娯楽">娯楽</option>
-			<option value="嗜好品">嗜好品</option>
-			<option value="交際費">交際費</option>
-			<option value="その他">その他</option>
-		</select>
-		<input required id="price" name="price" type="number">
-		<input required id="item" name="item">
-		<input type="submit">
-	</form>
-</body>
-</html>`, t.Year(), int(t.Month()), t.Day())
+	tpl, err := template.ParseFiles("input-form.html.tpl")
+	if err != nil {
+		log.Fatalln(err)
+	}
+	if err := tpl.Execute(w, map[string]interface{}{
+		"date":         fmt.Sprintf("%4d-%02d-%02d", t.Year(), int(t.Month()), t.Day()),
+		"categoryList": []string{"生活費", "娯楽", "嗜好品", "交際費", "その他"},
+	}); err != nil {
+		log.Fatalln(err)
+	}
 }
 
 func sendAccount(w http.ResponseWriter, r *http.Request) {
@@ -67,40 +53,22 @@ func sendAccount(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		// print input form
-		fmt.Fprintf(w, `<html>
-<head>
-	<title>Household Accounts Input Form</title>
-	<style>
-		input, select {font-size: 2em; width: 80vw; margin: 0.2em; }
-		form {margin: 1em; }
-		body {text-align: center; }
-	</style>
-</head>
-<body>
-	<form method="post" action="account">
-		<input required id="date" name="date" type="date" value="%s">
-		<select required id="category" name="category">`, params["date"])
-
-		// remember submitted category
-		for _, c := range []string{"生活費", "娯楽", "嗜好品", "交際費", "その他"} {
-			s := ""
-			if c == params["category"] {
-				s = "selected"
-			}
-			fmt.Fprintf(w, "\t\t\t"+`<option %s value="%s">%s</option>`+"\n", s, c, c)
+		tpl, err := template.ParseFiles("input-form.html.tpl")
+		if err != nil {
+			log.Fatalln(err)
 		}
-
-		fmt.Fprintf(w, "\t\t"+`</select>
-		<input required id="price" name="price" type="number">
-		<input required id="item" name="item">
-		<input type="submit">
-	</form>`)
-		// print submitted result
-		fmt.Fprintf(w, `<ul>`)
-		for _, k := range []string{"date", "category", "price", "item"} {
-			fmt.Fprintf(w, "<li>%v: %v</li>\n", k, params[k])
+		if err := tpl.Execute(w, map[string]interface{}{
+			"date":         params["date"],
+			"categoryList": []string{"生活費", "娯楽", "嗜好品", "交際費", "その他"},
+			"submit": map[string]interface{}{
+				"date":     params["date"],
+				"category": params["category"],
+				"price":    params["price"],
+				"item":     params["item"],
+			},
+		}); err != nil {
+			log.Fatalln(err)
 		}
-		fmt.Fprintf(w, `</ul><p><a href="/">return</a></p></body></html>`)
 
 		// append account entry to Google Sheet
 		if err := appendToSheets(params); err != nil {
@@ -108,8 +76,6 @@ func sendAccount(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		// return 201 Created
-		w.WriteHeader(http.StatusCreated)
 
 		// post account entry to Discord Channel
 		if err := postToDiscordChannel(params); err != nil {
