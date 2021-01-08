@@ -13,7 +13,7 @@ RUN apt-get update \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/* \
  && update-ca-certificates
-COPY --from=builder /app/ /app/
+COPY --from=builder /app/household-accounts-form /app/*.html.tpl /app/
 WORKDIR /app/
 CMD /app/household-accounts-form
 EXPOSE 8080
