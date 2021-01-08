@@ -1,4 +1,4 @@
-module go.neigepluie.net/household-accounts
+module go.neigepluie.net/household-accounts-form
 
 go 1.15
 
