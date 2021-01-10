@@ -1,11 +1,20 @@
 <html>
+<!DOCTYPE html>
 <head>
 	<title>Household Accounts Input Form</title>
+	<meta name="viewport" content="width=device-width,initial-scale=1">
 	<style>
-		input, select {font-size: 2em; width: 80vw; margin: 0.2em;}
-		form {margin: 1em;}
+		input, select {font-size: 2em; width: 20em; max-width: 90vw; margin: 0.2em;}
+		form {margin: 1em 0;}
 		body {text-align: center;}
 		ul {text-align: left;}
+		@media only screen and (min-width: 768px) {
+			input#date {width: 10em;}
+			select#category {width: 10em;}
+		}
+		@media only screen and (max-width: 767px) {
+			input, select {width: 95vw;}
+		}
 	</style>
 </head>
 <body>
