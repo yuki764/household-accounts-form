@@ -86,11 +86,15 @@ func sendAccount(w http.ResponseWriter, r *http.Request) {
 
 func appendToSheets(params map[string]interface{}) error {
 	// get time
-	t := time.Now()
+	t, err := time.Parse("2006-01-02", params["date"].(string))
+	if err != nil {
+		return err
+	}
+
 	ctx := context.Background()
 	sheetsService, err := sheets.NewService(ctx)
 	if err != nil {
-		log.Println(err)
+		return err
 	}
 	sheetId := os.Getenv("SHEET_ID")
 	rows := [][]interface{}{{`=TEXT(OFFSET(INDIRECT("RC",FALSE),0,1), "yyyy/mm")`, params["date"], params["category"], params["price"], params["item"]}}
@@ -104,7 +108,7 @@ func appendToSheets(params map[string]interface{}) error {
 
 	resp, err := sheetsService.Spreadsheets.Values.Append(sheetId, strconv.Itoa(fy)+"年度!A18", rb).ValueInputOption("USER_ENTERED").InsertDataOption("INSERT_ROWS").Do()
 	if err != nil {
-		log.Println(err)
+		return err
 	}
 	log.Printf("%#v\n", resp)
 
