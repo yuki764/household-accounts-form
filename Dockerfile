@@ -2,7 +2,7 @@ FROM golang:1.15 AS builder
 WORKDIR /app/
 COPY go.mod /app/
 RUN go mod download
-COPY *.go *.html.tpl /app/
+COPY *.go /app/
 RUN go build
 
 FROM debian:buster-slim
@@ -13,7 +13,8 @@ RUN apt-get update \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/* \
  && update-ca-certificates
-COPY --from=builder /app/household-accounts-form /app/*.html.tpl /app/
+COPY --from=builder /app/household-accounts-form /app/
+COPY *.html.tpl /app/
 WORKDIR /app/
 CMD /app/household-accounts-form
 EXPOSE 8080
