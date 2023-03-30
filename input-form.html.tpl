@@ -3,6 +3,7 @@
 <head>
 	<title>Household Accounts Input Form</title>
 	<meta name="viewport" content="width=device-width,initial-scale=1">
+	<meta name="referrer" content="no-referrer">
 	<style>
 		input, select {font-size: 2em; width: 20em; max-width: 90vw; margin: 0.2em;}
 		form {margin: 1em 0;}

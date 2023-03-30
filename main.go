@@ -27,7 +27,7 @@ func inputForm(w http.ResponseWriter, r *http.Request) {
 		log.Fatalln(err)
 	}
 	if err := tpl.Execute(w, map[string]interface{}{
-		"date":         fmt.Sprintf("%4d-%02d-%02d", t.Year(), int(t.Month()), t.Day()),
+		"date":         t.Format(time.DateOnly),
 		"categoryList": []string{"生活費", "娯楽", "嗜好品", "交際費", "その他"},
 	}); err != nil {
 		log.Fatalln(err)
