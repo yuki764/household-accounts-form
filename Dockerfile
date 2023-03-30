@@ -1,21 +1,15 @@
-FROM golang:1.15 AS builder
-WORKDIR /app/
-COPY go.mod /app/
+FROM golang:1.20-bullseye AS build
+WORKDIR /go/src/app/
+COPY go.mod go.sum .
 RUN go mod download
-COPY *.go /app/
-RUN go build
+COPY *.go .
+RUN CGO_ENABLED=0 go build
 
-FROM debian:buster-slim
+FROM gcr.io/distroless/static-debian11:latest
 LABEL maintainer "Setuu <setuu@neigepluie.net>"
-RUN apt-get update \
- && apt-get install -y --no-install-recommends \
-    ca-certificates \
- && apt-get clean \
- && rm -rf /var/lib/apt/lists/* \
- && update-ca-certificates
-COPY --from=builder /app/household-accounts-form /app/
-COPY *.html.tpl /app/
 WORKDIR /app/
-CMD /app/household-accounts-form
-EXPOSE 8080
+COPY --from=build /go/src/app/household-accounts-form .
+COPY *.html.tpl .
 ENV TZ=Asia/Tokyo
+EXPOSE 8080
+CMD ["/app/household-accounts-form"]
