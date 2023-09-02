@@ -1,11 +1,11 @@
-FROM golang:1.20-bullseye AS build
+FROM golang:1.21.0-bookworm AS build
 WORKDIR /go/src/app/
-COPY go.mod go.sum .
+COPY go.mod go.sum ./
 RUN go mod download
-COPY *.go .
+COPY *.go ./
 RUN CGO_ENABLED=0 go build
 
-FROM gcr.io/distroless/static-debian11:latest
+FROM gcr.io/distroless/static-debian12:latest
 LABEL maintainer "Setuu <setuu@neigepluie.net>"
 WORKDIR /app/
 COPY --from=build /go/src/app/household-accounts-form .
