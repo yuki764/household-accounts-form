@@ -1,155 +1,156 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"html/template"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
-
-	"google.golang.org/api/sheets/v4"
 )
 
-func inputForm(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
-		http.NotFound(w, r)
-		return
+func main() {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		// https://cloud.google.com/logging/docs/structured-logging
+		ReplaceAttr: func(groups []string, attr slog.Attr) slog.Attr {
+			if attr.Key == slog.MessageKey {
+				attr.Key = "message"
+			}
+			if attr.Key == slog.LevelKey {
+				attr.Key = "severity"
+				level := attr.Value.Any().(slog.Level)
+				if level == slog.LevelWarn {
+					attr.Value = slog.StringValue("WARNING")
+				}
+			}
+			return attr
+		},
+	}))
+	slog.SetDefault(logger)
+
+	sheetId := os.Getenv("SPREADSHEET_ID")
+	slog.Default().Info("Google Spreadsheet ID: " + sheetId)
+
+	prefix := strings.Replace("/"+os.Getenv("HTTP_PATH_PREFIX")+"/", "//", "/", -1)
+	slog.Default().Info("Path Prefix: " + prefix)
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
 	}
-	// get time
-	t := time.Now()
-	// print input form
-	tpl, err := template.ParseFiles("input-form.html.tpl")
-	if err != nil {
-		log.Fatalln(err)
-	}
-	if err := tpl.Execute(w, map[string]interface{}{
-		"date":         t.Format(time.DateOnly),
-		"categoryList": []string{"生活費", "娯楽", "嗜好品", "交際費", "その他"},
-	}); err != nil {
-		log.Fatalln(err)
+	slog.Default().Info("Port: " + port)
+
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
+
+	http.HandleFunc(prefix+"form", renderInputForm(sheetId))
+	http.HandleFunc(prefix+"account", sendAccount(sheetId))
+
+	if err := http.ListenAndServe(":"+port, nil); err != nil {
+		slog.Default().With("error", err).Error("failed to listen port 8080")
+		panic(err)
 	}
 }
 
-func sendAccount(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
+func renderInputForm(sheetId string) func(http.ResponseWriter, *http.Request) {
+	// get categories from spreadsheet
+	ctx := context.Background()
+	categoryList, err := getCategories(ctx, sheetId)
+	if err != nil {
+		slog.Default().With("error", err).Error("failed to retrive category list from spreadsheet")
+		panic(err)
 	}
 
-	if err := r.ParseForm(); err != nil {
-		fmt.Fprintf(w, "error: while parsing params.")
-		w.WriteHeader(http.StatusBadRequest)
-	} else {
-		params := map[string]interface{}{}
-		for k, v := range r.PostForm {
-			if k == "price" {
-				params[k], _ = strconv.Atoi(v[0])
-			} else {
-				params[k] = v[0]
-			}
-		}
-		// print input form
-		tpl, err := template.ParseFiles("input-form.html.tpl")
-		if err != nil {
-			log.Fatalln(err)
-		}
-		if err := tpl.Execute(w, map[string]interface{}{
-			"date":         params["date"],
-			"categoryList": []string{"生活費", "娯楽", "嗜好品", "交際費", "その他"},
-			"submit": map[string]interface{}{
-				"date":     params["date"],
-				"category": params["category"],
-				"price":    params["price"],
-				"item":     params["item"],
-			},
-		}); err != nil {
-			log.Fatalln(err)
-		}
-
-		// append account entry to Google Sheet
-		if err := appendToSheets(params); err != nil {
-			log.Println(err)
-			w.WriteHeader(http.StatusInternalServerError)
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			fmt.Fprintln(w, "Method Not Allowed")
 			return
 		}
 
-		// post account entry to Discord Channel
-		if err := postToDiscordChannel(params); err != nil {
-			log.Println(err)
+		// get time
+		t := time.Now()
+		// get last submit values from GET params if exists
+		submit := map[string]interface{}{
+			"date":     r.FormValue("submit_date"),
+			"category": r.FormValue("submit_category"),
+			"price":    r.FormValue("submit_price"),
+			"item":     r.FormValue("submit_item"),
+		}
+		if submit["date"] == "" || submit["category"] == "" || submit["price"] == "" || submit["item"] == "" {
+			submit = nil
+		}
+
+		// print input form
+		tpl, err := template.ParseFiles("input-form.html.tpl")
+		if err != nil {
+			slog.Default().With("error", err).Error("failed to parse html template")
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		if err := tpl.Execute(w, map[string]interface{}{
+			"date":         t.Format(time.DateOnly),
+			"categoryList": categoryList,
+			"submit":       submit,
+		}); err != nil {
+			slog.Default().With("error", err).Error("failed to render form html from template")
+			w.WriteHeader(http.StatusInternalServerError)
+			return
 		}
 	}
 }
 
-func appendToSheets(params map[string]interface{}) error {
-	// get time
-	t, err := time.Parse("2006-01-02", params["date"].(string))
-	if err != nil {
-		return err
+func sendAccount(sheetId string) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			fmt.Fprintln(w, "Method Not Allowed")
+			return
+		}
+
+		if err := r.ParseForm(); err != nil {
+			slog.Default().Info("failed to parse form parameters", "error", err)
+			w.WriteHeader(http.StatusBadRequest)
+		} else {
+			params := map[string]interface{}{}
+			for k, v := range r.PostForm {
+				if k == "price" {
+					params[k], _ = strconv.Atoi(v[0])
+				} else {
+					params[k] = v[0]
+				}
+			}
+
+			// append account entry to Google Sheet
+			if err := appendToSheets(sheetId, params); err != nil {
+				slog.Default().Error("failed to append account to spreadsheet", "error", err)
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+
+			// post account entry to Discord Channel
+			if err := postToDiscordChannel(params); err != nil {
+				slog.Default().Error("failed to post message to discord channel", "error", err)
+			}
+
+			get_params := strings.Join([]string{
+				"submit_date=" + r.PostForm["date"][0],
+				"submit_category=" + r.PostForm["category"][0],
+				"submit_price=" + r.PostForm["price"][0],
+				"submit_item=" + r.PostForm["item"][0],
+			}, "&")
+
+			fmt.Fprintf(w, `<!DOCTYPE html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="refresh" content="1;URL=form?`+get_params+`">
+</head>
+<body>
+<p>The account has been submitted. Please wait...</p>
+</body>
+</html>`)
+		}
 	}
-
-	ctx := context.Background()
-	sheetsService, err := sheets.NewService(ctx)
-	if err != nil {
-		return err
-	}
-	sheetId := os.Getenv("SHEET_ID")
-	rows := [][]interface{}{{`=TEXT(OFFSET(INDIRECT("RC",FALSE),0,1), "yyyy/mm")`, params["date"], params["category"], params["price"], params["item"]}}
-	rb := &sheets.ValueRange{Values: rows}
-
-	// calculate financial year
-	fy := t.Year()
-	if int(t.Month()) < 4 {
-		fy = fy - 1
-	}
-
-	resp, err := sheetsService.Spreadsheets.Values.Append(sheetId, strconv.Itoa(fy)+"年度!A18", rb).ValueInputOption("USER_ENTERED").InsertDataOption("INSERT_ROWS").Do()
-	if err != nil {
-		return err
-	}
-	log.Printf("%#v\n", resp)
-
-	return err
-}
-
-func postToDiscordChannel(account map[string]interface{}) error {
-	webhookUrl := os.Getenv("DISCORD_WEBHOOK_URL")
-	rb := `{"embeds": [{ "color" : 10475956, "fields": [`
-	rb += fmt.Sprintf(`{"name": "date", "value": "%v"}`, account["date"]) + `,`
-	rb += fmt.Sprintf(`{"name": "price", "value": "%v"}`, account["price"]) + `,`
-	rb += fmt.Sprintf(`{"name": "category", "value": "%v", "inline": true}`, account["category"]) + `,`
-	rb += fmt.Sprintf(`{"name": "item", "value": "%v", "inline": true}`, account["item"])
-	rb += `]}]}`
-
-	req, err := http.NewRequest(
-		"POST",
-		webhookUrl,
-		bytes.NewBuffer([]byte(rb)),
-	)
-	if err != nil {
-		log.Println(err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Println(err)
-	}
-	log.Printf("%#v\n", resp)
-
-	defer resp.Body.Close()
-
-	return err
-}
-
-func main() {
-	log.Printf("Google Sheet ID: %v", os.Getenv("SHEET_ID"))
-
-	http.HandleFunc("/", inputForm)
-	http.HandleFunc("/account", sendAccount)
-	http.ListenAndServe(":8080", nil)
 }
