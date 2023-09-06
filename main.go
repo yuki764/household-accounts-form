@@ -70,8 +70,9 @@ func renderInputForm(sheetId string) func(http.ResponseWriter, *http.Request) {
 			return
 		}
 
-		// get time
-		t := time.Now()
+		// get current date
+		date := time.Now().Format(time.DateOnly)
+
 		// get last submit values from GET params if exists
 		submit := map[string]interface{}{
 			"date":     r.FormValue("submit_date"),
@@ -81,6 +82,9 @@ func renderInputForm(sheetId string) func(http.ResponseWriter, *http.Request) {
 		}
 		if submit["date"] == "" || submit["category"] == "" || submit["price"] == "" || submit["item"] == "" {
 			submit = nil
+		} else {
+			// overwrite date from last submitted
+			date = submit["date"].(string)
 		}
 
 		// print input form
@@ -91,7 +95,7 @@ func renderInputForm(sheetId string) func(http.ResponseWriter, *http.Request) {
 			return
 		}
 		if err := tpl.Execute(w, map[string]interface{}{
-			"date":         t.Format(time.DateOnly),
+			"date":         date,
 			"categoryList": categoryList,
 			"submit":       submit,
 		}); err != nil {
