@@ -11,7 +11,7 @@ FROM gcr.io/distroless/static-debian12:latest
 LABEL maintainer "Setuu <setuu@neigepluie.net>"
 WORKDIR /app/
 COPY --from=build /go/src/app/household-accounts-form .
-COPY *.html.tpl .
+COPY templates/ ./templates/
 ENV TZ=Asia/Tokyo
 EXPOSE 8080
 CMD ["/app/household-accounts-form"]
