@@ -5,6 +5,8 @@
 	<meta name="viewport" content="width=device-width,initial-scale=1">
 	<meta name="referrer" content="no-referrer">
 
+	<link rel="manifest" href="manifest.webmanifest">
+
 	<style>
 		input, select, button {
 			font-size: 2em;

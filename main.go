@@ -3,12 +3,13 @@ package main
 import (
 	"context"
 	"fmt"
-	"html/template"
+	htpl "html/template"
 	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	ttpl "text/template"
 	"time"
 )
 
@@ -37,6 +38,11 @@ func main() {
 	prefix := strings.Replace("/"+os.Getenv("HTTP_PATH_PREFIX")+"/", "//", "/", -1)
 	slog.Default().Info("Path Prefix: " + prefix)
 
+	webAppIconSvgUrl := os.Getenv("WEB_APP_ICON_URL_SVG")
+	webAppIconPng128Url := os.Getenv("WEB_APP_ICON_URL_PNG_128")
+	slog.Default().Info("Web App Icon (SVG): " + webAppIconSvgUrl)
+	slog.Default().Info("Web App Icon (PNG, 128px): " + webAppIconPng128Url)
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
@@ -47,6 +53,8 @@ func main() {
 
 	http.HandleFunc(prefix+"form", renderInputForm(sheetId))
 	http.HandleFunc(prefix+"account", sendAccount(sheetId))
+
+	http.HandleFunc(prefix+"manifest.webmanifest", renderWebAppManifest(webAppIconSvgUrl, webAppIconPng128Url))
 
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
 		slog.Default().With("error", err).Error("failed to listen port 8080")
@@ -88,7 +96,7 @@ func renderInputForm(sheetId string) func(http.ResponseWriter, *http.Request) {
 		}
 
 		// print input form
-		tpl, err := template.ParseFiles("input-form.html.tpl")
+		tpl, err := htpl.ParseFiles("templates/input-form.html.tpl")
 		if err != nil {
 			slog.Default().With("error", err).Error("failed to parse html template")
 			w.WriteHeader(http.StatusInternalServerError)
@@ -155,6 +163,25 @@ func sendAccount(sheetId string) func(http.ResponseWriter, *http.Request) {
 <p>The account has been submitted. Please wait...</p>
 </body>
 </html>`)
+		}
+	}
+}
+
+func renderWebAppManifest(iconUrlSvg string, iconUrlPng128 string) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		tpl, err := ttpl.ParseFiles("templates/manifest.webmanifest.tpl")
+		if err != nil {
+			slog.Default().With("error", err).Error("failed to parse web app manifest template")
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		if err := tpl.Execute(w, map[string]interface{}{
+			"iconUrlSvg":    iconUrlSvg,
+			"iconUrlPng128": iconUrlPng128,
+		}); err != nil {
+			slog.Default().With("error", err).Error("failed to render web app manifest from template")
+			w.WriteHeader(http.StatusInternalServerError)
+			return
 		}
 	}
 }

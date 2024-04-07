@@ -1,4 +1,6 @@
-FROM golang:1.21.0-bookworm AS build
+ARG GO_VERSION=1.22.2
+
+FROM golang:${GO_VERSION}-bookworm AS build
 WORKDIR /go/src/app/
 COPY go.mod go.sum ./
 RUN go mod download
@@ -9,7 +11,7 @@ FROM gcr.io/distroless/static-debian12:latest
 LABEL maintainer "Setuu <setuu@neigepluie.net>"
 WORKDIR /app/
 COPY --from=build /go/src/app/household-accounts-form .
-COPY *.html.tpl .
+COPY templates/ ./templates/
 ENV TZ=Asia/Tokyo
 EXPOSE 8080
 CMD ["/app/household-accounts-form"]

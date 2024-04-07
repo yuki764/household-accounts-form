@@ -1,8 +1,8 @@
 module neigepluie.net/household-accounts-form
 
-go 1.21
+go 1.22
 
-toolchain go1.21.0
+toolchain go1.22.2
 
 require google.golang.org/api v0.172.0
 
