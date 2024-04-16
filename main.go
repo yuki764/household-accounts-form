@@ -175,6 +175,9 @@ func renderWebAppManifest(iconUrlSvg string, iconUrlPng128 string) func(http.Res
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
+
+		w.Header().Add("Content-Type", "application/manifest+json")
+
 		if err := tpl.Execute(w, map[string]interface{}{
 			"iconUrlSvg":    iconUrlSvg,
 			"iconUrlPng128": iconUrlPng128,
