@@ -1,4 +1,4 @@
-ARG GO_VERSION=1.22.2
+ARG GO_VERSION=1.23.4
 
 FROM golang:${GO_VERSION}-bookworm AS build
 WORKDIR /go/src/app/
@@ -7,8 +7,8 @@ RUN go mod download
 COPY *.go ./
 RUN CGO_ENABLED=0 go build
 
-FROM gcr.io/distroless/static-debian12:latest
-LABEL maintainer "Setuu <setuu@neigepluie.net>"
+FROM gcr.io/distroless/static-debian12:nonroot
+LABEL maintainer="Setuu <setuu@neigepluie.net>"
 WORKDIR /app/
 COPY --from=build /go/src/app/household-accounts-form .
 COPY templates/ ./templates/
