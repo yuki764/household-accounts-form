@@ -53,8 +53,8 @@ func appendToSheets(sheetId string, params map[string]interface{}) error {
 		return err
 	}
 
-	slog.Default().Info("debug", "debug response", resp)
-	slog.Default().Info("appended to " + resp.TableRange)
+	slog.Info("debug", "debug response", resp)
+	slog.Info("appended to " + resp.TableRange)
 
 	return err
 }
