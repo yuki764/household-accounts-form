@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"html"
 	htpl "html/template"
 	"log/slog"
 	"net/http"
@@ -13,7 +14,7 @@ import (
 	"time"
 )
 
-func main() {
+func init() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		// https://cloud.google.com/logging/docs/structured-logging
 		ReplaceAttr: func(groups []string, attr slog.Attr) slog.Attr {
@@ -31,23 +32,25 @@ func main() {
 		},
 	}))
 	slog.SetDefault(logger)
+}
 
+func main() {
 	sheetId := os.Getenv("SPREADSHEET_ID")
-	slog.Default().Info("Google Spreadsheet ID: " + sheetId)
+	slog.Info("Google Spreadsheet ID: " + sheetId)
 
 	prefix := strings.Replace("/"+os.Getenv("HTTP_PATH_PREFIX")+"/", "//", "/", -1)
-	slog.Default().Info("Path Prefix: " + prefix)
+	slog.Info("Path Prefix: " + prefix)
 
 	webAppIconSvgUrl := os.Getenv("WEB_APP_ICON_URL_SVG")
 	webAppIconPng128Url := os.Getenv("WEB_APP_ICON_URL_PNG_128")
-	slog.Default().Info("Web App Icon (SVG): " + webAppIconSvgUrl)
-	slog.Default().Info("Web App Icon (PNG, 128px): " + webAppIconPng128Url)
+	slog.Info("Web App Icon (SVG): " + webAppIconSvgUrl)
+	slog.Info("Web App Icon (PNG, 128px): " + webAppIconPng128Url)
 
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
-	slog.Default().Info("Port: " + port)
+	slog.Info("Port: " + port)
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
 
@@ -57,7 +60,7 @@ func main() {
 	http.HandleFunc(prefix+"manifest.webmanifest", renderWebAppManifest(webAppIconSvgUrl, webAppIconPng128Url))
 
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
-		slog.Default().With("error", err).Error("failed to listen port 8080")
+		slog.With("error", err).Error("failed to listen port 8080")
 		panic(err)
 	}
 }
@@ -67,7 +70,7 @@ func renderInputForm(sheetId string) func(http.ResponseWriter, *http.Request) {
 	ctx := context.Background()
 	categoryList, err := getCategories(ctx, sheetId)
 	if err != nil {
-		slog.Default().With("error", err).Error("failed to retrive category list from spreadsheet")
+		slog.With("error", err).Error("failed to retrive category list from spreadsheet")
 		panic(err)
 	}
 
@@ -98,7 +101,7 @@ func renderInputForm(sheetId string) func(http.ResponseWriter, *http.Request) {
 		// print input form
 		tpl, err := htpl.ParseFiles("templates/input-form.html.tpl")
 		if err != nil {
-			slog.Default().With("error", err).Error("failed to parse html template")
+			slog.With("error", err).Error("failed to parse html template")
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -107,7 +110,7 @@ func renderInputForm(sheetId string) func(http.ResponseWriter, *http.Request) {
 			"categoryList": categoryList,
 			"submit":       submit,
 		}); err != nil {
-			slog.Default().With("error", err).Error("failed to render form html from template")
+			slog.With("error", err).Error("failed to render form html from template")
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -123,7 +126,7 @@ func sendAccount(sheetId string) func(http.ResponseWriter, *http.Request) {
 		}
 
 		if err := r.ParseForm(); err != nil {
-			slog.Default().Info("failed to parse form parameters", "error", err)
+			slog.Info("failed to parse form parameters", "error", err)
 			w.WriteHeader(http.StatusBadRequest)
 		} else {
 			params := map[string]interface{}{}
@@ -137,21 +140,21 @@ func sendAccount(sheetId string) func(http.ResponseWriter, *http.Request) {
 
 			// append account entry to Google Sheet
 			if err := appendToSheets(sheetId, params); err != nil {
-				slog.Default().Error("failed to append account to spreadsheet", "error", err)
+				slog.Error("failed to append account to spreadsheet", "error", err)
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
 
 			// post account entry to Discord Channel
 			if err := postToDiscordChannel(params); err != nil {
-				slog.Default().Error("failed to post message to discord channel", "error", err)
+				slog.Error("failed to post message to discord channel", "error", err)
 			}
 
 			get_params := strings.Join([]string{
-				"submit_date=" + r.PostForm["date"][0],
-				"submit_category=" + r.PostForm["category"][0],
-				"submit_price=" + r.PostForm["price"][0],
-				"submit_item=" + r.PostForm["item"][0],
+				"submit_date=" + html.EscapeString(r.PostForm["date"][0]),
+				"submit_category=" + html.EscapeString(r.PostForm["category"][0]),
+				"submit_price=" + html.EscapeString(r.PostForm["price"][0]),
+				"submit_item=" + html.EscapeString(r.PostForm["item"][0]),
 			}, "&")
 
 			fmt.Fprintf(w, `<!DOCTYPE html>
@@ -171,7 +174,7 @@ func renderWebAppManifest(iconUrlSvg string, iconUrlPng128 string) func(http.Res
 	return func(w http.ResponseWriter, r *http.Request) {
 		tpl, err := ttpl.ParseFiles("templates/manifest.webmanifest.tpl")
 		if err != nil {
-			slog.Default().With("error", err).Error("failed to parse web app manifest template")
+			slog.With("error", err).Error("failed to parse web app manifest template")
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -182,7 +185,7 @@ func renderWebAppManifest(iconUrlSvg string, iconUrlPng128 string) func(http.Res
 			"iconUrlSvg":    iconUrlSvg,
 			"iconUrlPng128": iconUrlPng128,
 		}); err != nil {
-			slog.Default().With("error", err).Error("failed to render web app manifest from template")
+			slog.With("error", err).Error("failed to render web app manifest from template")
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
